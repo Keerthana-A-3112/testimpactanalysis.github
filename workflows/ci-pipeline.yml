@@ -1,34 +1,41 @@
-name: CI/CD Pipeline
+name: CI Pipeline
 
-# Trigger the workflow on push to the 'main' branch
 on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 jobs:
-  build:
-    runs-on: ubuntu-latest  # You can choose other environments if needed
+  build-and-test:
+    runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout code from the repository
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # Step 2: Set up Java (for Java projects)
-      - name: Set up Java
-        uses: actions/setup-java@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          java-version: '11'  # You can specify other versions if needed
+          python-version: '3.x'
 
-      # Step 3: Install dependencies (e.g., for Maven)
       - name: Install Dependencies
-        run: mvn install
+        run: |
+          pip install launchable-cli # Install Launchable CLI
+          mvn install # Install project dependencies
 
-      # Step 4: Run tests
-      - name: Run Tests
+      - name: Authenticate Launchable
+        run: launchable configure --token ${{ secrets.LAUNCHABLE_TOKEN }} # Authenticate using a secret
+
+      - name: Record Build
+        run: launchable record build --name ${{ github.sha }} # Record the build using the Git commit hash
+
+      - name: Run Full Test Suite
         run: mvn test
 
+      - name: Record Test Results
+        run: launchable record tests --build ${{ github.sha }} target/surefire-reports/*.xml # Upload test results
+
+      - name: Subset Tests (Optional)
+        run: |
+          launchable subset --build ${{ github.sha }} --target 30% > subset_tests.txt
+          mvn test -Dsurefire.includes=$(cat subset_tests.txt) # Run the subset tests
